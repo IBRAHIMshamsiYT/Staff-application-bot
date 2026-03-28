@@ -1,0 +1,132 @@
+require("dotenv").config();
+const {
+  Client,
+  GatewayIntentBits,
+  Events,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  EmbedBuilder
+} = require("discord.js");
+
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds]
+});
+
+client.once(Events.ClientReady, () => {
+  console.log(`✅ Logged in as ${client.user.tag}`);
+});
+
+// SEND APPLY PANEL (run once manually)
+client.on(Events.ClientReady, async () => {
+  const channel = await client.channels.fetch(process.env.APPLY_CHANNEL);
+
+  const button = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("apply")
+      .setLabel("Apply for Staff")
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  const embed = new EmbedBuilder()
+    .setTitle("📋 Staff Applications")
+    .setDescription("Click the button below to apply!")
+    .setColor("Blue");
+
+  await channel.send({ embeds: [embed], components: [button] });
+});
+
+// INTERACTIONS
+client.on(Events.InteractionCreate, async interaction => {
+
+  // APPLY BUTTON
+  if (interaction.isButton() && interaction.customId === "apply") {
+
+    const modal = new ModalBuilder()
+      .setCustomId("app_modal")
+      .setTitle("Staff Application");
+
+    const q1 = new TextInputBuilder()
+      .setCustomId("q1")
+      .setLabel("Why should we select you?")
+      .setStyle(TextInputStyle.Paragraph);
+
+    const q2 = new TextInputBuilder()
+      .setCustomId("q2")
+      .setLabel("Your experience?")
+      .setStyle(TextInputStyle.Short);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(q1),
+      new ActionRowBuilder().addComponents(q2)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  // MODAL SUBMIT
+  if (interaction.isModalSubmit()) {
+
+    const ans1 = interaction.fields.getTextInputValue("q1");
+    const ans2 = interaction.fields.getTextInputValue("q2");
+
+    const staffChannel = await client.channels.fetch(process.env.STAFF_CHANNEL);
+
+    const buttons = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`approve_${interaction.user.id}`)
+        .setLabel("Approve")
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId(`reject_${interaction.user.id}`)
+        .setLabel("Reject")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    const embed = new EmbedBuilder()
+      .setTitle("📨 New Application")
+      .addFields(
+        { name: "User", value: `<@${interaction.user.id}>` },
+        { name: "Why should we select you?", value: ans1 },
+        { name: "Experience", value: ans2 }
+      )
+      .setColor("Yellow");
+
+    await staffChannel.send({ embeds: [embed], components: [buttons] });
+
+    await interaction.reply({ content: "✅ Application submitted!", ephemeral: true });
+  }
+
+  // APPROVE / REJECT
+  if (interaction.isButton()) {
+
+    if (interaction.customId.startsWith("approve_")) {
+      const userId = interaction.customId.split("_")[1];
+
+      const member = await interaction.guild.members.fetch(userId);
+
+      // OPTIONAL ROLE
+      if (process.env.STAFF_ROLE) {
+        await member.roles.add(process.env.STAFF_ROLE);
+      }
+
+      await member.send("🎉 Your application has been approved!");
+      await interaction.reply({ content: "✅ Approved", ephemeral: true });
+    }
+
+    if (interaction.customId.startsWith("reject_")) {
+      const userId = interaction.customId.split("_")[1];
+      const user = await client.users.fetch(userId);
+
+      await user.send("❌ Your application was rejected.");
+      await interaction.reply({ content: "❌ Rejected", ephemeral: true });
+    }
+  }
+
+});
+
+client.login(process.env.TOKEN);
